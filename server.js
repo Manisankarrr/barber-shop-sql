@@ -7,7 +7,13 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+// ✅ Allow CORS from S3/CloudFront domain
+app.use(cors({
+  origin: '*', // or specify your frontend domain for better security
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type']
+}));
+
 app.use(express.json());
 
 // ✅ MySQL connection
@@ -26,10 +32,10 @@ db.connect((err) => {
   }
 });
 
-// ✅ Serve static files
+// ✅ Serve static files from public directory
 app.use(express.static(path.join(__dirname, 'public')));
 
-// API route
+// ✅ API route to handle booking
 app.post('/api/book', (req, res) => {
   const { name, phone, email, date, time, branch, people, message } = req.body;
 
@@ -52,7 +58,7 @@ app.post('/api/book', (req, res) => {
   );
 });
 
-// Fallback route
+// ✅ Fallback to serve frontend for any unknown route
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
