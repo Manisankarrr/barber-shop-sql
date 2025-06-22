@@ -26,41 +26,47 @@
     }
   });
 
-  // ✅ FORM SUBMISSION
-  document.getElementById("bookingForm").addEventListener("submit", async function (e) {
-    e.preventDefault();
+  // ✅ FORM SUBMIT HANDLER (wait until HTML is ready)
+  $(document).ready(function () {
+    const form = document.getElementById("bookingForm");
 
-    const formData = {
-      name: document.getElementById("name").value,
-      phone: document.getElementById("phone").value,
-      email: document.getElementById("email").value,
-      date: document.getElementById("date").value,
-      time: document.getElementById("time").value,
-      branch: document.getElementById("branch").value,
-      people: document.getElementById("people").value,
-      message: document.getElementById("message").value
-    };
+    if (form) {
+      form.addEventListener("submit", async function (e) {
+        e.preventDefault();
 
-    try {
-      const res = await fetch("http://barbershop-alb-29040749.ap-south-1.elb.amazonaws.com/api/book", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(formData)
+        const formData = {
+          name: document.getElementById("name").value,
+          phone: document.getElementById("phone").value,
+          email: document.getElementById("email").value,
+          date: document.getElementById("date").value,
+          time: document.getElementById("time").value,
+          branch: document.getElementById("branch").value,
+          people: document.getElementById("people").value,
+          message: document.getElementById("message").value
+        };
+
+        try {
+          const res = await fetch("http://barbershop-alb-29040749.ap-south-1.elb.amazonaws.com/api/book", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(formData)
+          });
+
+          const data = await res.json();
+
+          if (res.ok) {
+            alert("✅ Booking successful!");
+            form.reset();
+          } else {
+            alert("❌ Booking failed: " + data.error);
+          }
+        } catch (err) {
+          console.error("❌ Network error:", err);
+          alert("❌ Could not connect to server");
+        }
       });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        alert("✅ Booking successful!");
-        document.getElementById("bookingForm").reset();
-      } else {
-        alert("❌ Booking failed: " + data.error);
-      }
-    } catch (err) {
-      console.error("❌ Network error:", err);
-      alert("❌ Could not connect to server");
     }
   });
 
