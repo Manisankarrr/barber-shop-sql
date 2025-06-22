@@ -61,5 +61,4 @@ jobs:
           tags: ${{ secrets.ECR_REPO }}:latest
 
       - name: Notify success
-        run: echo "✅ Docker image 'portfolio' pushed to AWS ECR and Docker Hub!"
-
+        run: echo "✅ Image pushed to AWS ECR and Docker Hub successfully!"
