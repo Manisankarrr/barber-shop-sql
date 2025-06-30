@@ -3,3 +3,7 @@ node_modules
 .git
 *.log
 docker-compose.yml
+
+ecs-fargate.yml
+s3-cloudfront.yml
+vpc-network.yml
