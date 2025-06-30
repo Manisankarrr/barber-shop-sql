@@ -1,19 +1,72 @@
-name: Frontend CI/CD - AWS S3 + CloudFront
+name: CI/CD - Full DevOps Pipeline
 
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 env:
   AWS_REGION: ap-south-1
-  S3_BUCKET: barbershop-frontend-112543404666
+  ECR_REPO: 112543404666.dkr.ecr.ap-south-1.amazonaws.com/barber-shop-sql
+  DOCKERHUB_IMAGE: manisankarrr/barber-shop-sql
+  S3_BUCKET: barbershop-frontend
   CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
 
 jobs:
-  deploy:
-    name: Upload to S3 & Invalidate CloudFront
-    runs-on: ubuntu-latest
 
+  # ── 1. Build & Push to Docker Hub ──
+  docker:
+    name: Build & Push to Docker Hub
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Docker Hub Login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Build & Push to Docker Hub
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ${{ env.DOCKERHUB_IMAGE }}:latest
+
+  # ── 2. Build & Push to AWS ECR ──
+  ecr:
+    name: Build & Push to AWS ECR
+    runs-on: ubuntu-latest
+    needs: docker
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & Push to ECR
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ${{ env.ECR_REPO }}:latest
+
+  # ── 3. Upload Frontend to S3 ──
+  s3:
+    name: Deploy Frontend to S3
+    runs-on: ubuntu-latest
+    needs: ecr
     steps:
       - uses: actions/checkout@v3
 
@@ -30,9 +83,44 @@ jobs:
             --delete \
             --cache-control "no-cache"
 
-      - name: Invalidate CloudFront Cache
+  # ── 4. Invalidate CloudFront ──
+  cloudfront:
+    name: Invalidate CloudFront Cache
+    runs-on: ubuntu-latest
+    needs: s3
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Invalidate Cache
         run: |
           aws cloudfront create-invalidation \
             --distribution-id ${{ env.CLOUDFRONT_DISTRIBUTION_ID }} \
             --paths "/*"
-          
+
+  # ── 5. Deploy to ECS ──
+  ecs:
+    name: Deploy to ECS Fargate
+    runs-on: ubuntu-latest
+    needs: ecr
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Force new ECS deployment
+        run: |
+          aws ecs update-service \
+            --cluster barbershop-cluster \
+            --service barbershop-service \
+            --force-new-deployment
+
+      - name: Notify success
+        run: echo "✅ Deployment to ECS Fargate successful!"
