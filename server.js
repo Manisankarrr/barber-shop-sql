@@ -7,9 +7,9 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// ✅ Allow CORS from S3/CloudFront domain
+// ✅ Allow CORS from anywhere or specific origin
 app.use(cors({
-  origin: '*', // or specify your frontend domain for better security
+  origin: '*',
   methods: ['GET', 'POST'],
   allowedHeaders: ['Content-Type']
 }));
@@ -32,8 +32,10 @@ db.connect((err) => {
   }
 });
 
-// ✅ Serve static files from public directory
-app.use(express.static(path.join(__dirname, 'public')));
+// ✅ Health check route for ALB
+app.get('/', (req, res) => {
+  res.send('🟢 Server is healthy!');
+});
 
 // ✅ API route to handle booking
 app.post('/api/book', (req, res) => {
@@ -58,11 +60,15 @@ app.post('/api/book', (req, res) => {
   );
 });
 
-// ✅ Fallback to serve frontend for any unknown route
+// ✅ Serve static files from /public
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ✅ Fallback for frontend routing (if needed)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+// ✅ ECS-compatible binding
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
 });
