@@ -4,15 +4,12 @@ Description: ECS Fargate deployment for Barbershop backend with ALB and HTTPS
 Parameters:
   VpcId:
     Type: AWS::EC2::VPC::Id
-    Description: VPC ID
-
-  SubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
-    Description: List of public Subnet IDs
-
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet::Id
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet::Id
   SecurityGroupId:
     Type: AWS::EC2::SecurityGroup::Id
-    Description: Security Group allowing ports 80/443/5000
 
 Resources:
 
@@ -26,7 +23,7 @@ Resources:
     Properties:
       RoleName: ecsTaskExecutionRole-barbershop
       AssumeRolePolicyDocument:
-        Version: "2012-10-17"
+        Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
@@ -40,6 +37,45 @@ Resources:
     Properties:
       LogGroupName: /ecs/barbershop
       RetentionInDays: 3
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: barbershop-alb
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !Ref SecurityGroupId
+      Scheme: internet-facing
+      Type: application
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: barbershop-target-group
+      Port: 5000
+      Protocol: HTTP
+      VpcId: !Ref VpcId
+      TargetType: ip
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      Certificates:
+        - CertificateArn: arn:aws:acm:us-east-1:127311923021:certificate/default
+      SslPolicy: ELBSecurityPolicy-2016-08
 
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -71,43 +107,8 @@ Resources:
               awslogs-region: ap-south-1
               awslogs-stream-prefix: ecs
 
-  LoadBalancer:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    Properties:
-      Name: barbershop-alb
-      Subnets: !Ref SubnetIds
-      SecurityGroups:
-        - !Ref SecurityGroupId
-      Scheme: internet-facing
-      Type: application
-      IpAddressType: ipv4
-
-  TargetGroup:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      Name: barbershop-target-group
-      Port: 5000
-      Protocol: HTTP
-      VpcId: !Ref VpcId
-      TargetType: ip
-      HealthCheckEnabled: true
-      HealthCheckPath: /
-      Matcher:
-        HttpCode: 200
-
-  Listener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      LoadBalancerArn: !Ref LoadBalancer
-      Port: 80
-      Protocol: HTTP
-      DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref TargetGroup
-
   ECSService:
     Type: AWS::ECS::Service
-    DependsOn: Listener  # 👈 ensures LB + listener is ready
     Properties:
       Cluster: !Ref ECSCluster
       ServiceName: barbershop-service
@@ -117,7 +118,9 @@ Resources:
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: ENABLED
-          Subnets: !Ref SubnetIds
+          Subnets:
+            - !Ref PublicSubnet1
+            - !Ref PublicSubnet2
           SecurityGroups:
             - !Ref SecurityGroupId
       LoadBalancers:
@@ -127,5 +130,9 @@ Resources:
 
 Outputs:
   LoadBalancerDNS:
-    Description: ALB DNS URL
+    Description: Public DNS name for ALB
     Value: !GetAtt LoadBalancer.DNSName
+
+  ClusterName:
+    Description: ECS Cluster Name
+    Value: !Ref ECSCluster
